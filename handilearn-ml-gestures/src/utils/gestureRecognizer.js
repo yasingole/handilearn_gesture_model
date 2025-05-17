@@ -1,92 +1,289 @@
 /**
- * Utility functions for gesture recognition
+ * GestureRecognizer - ML-based hand gesture recognition using TensorFlow.js
  */
+import * as tf from '@tensorflow/tfjs';
 
-/**
- * Recognize a gesture from hand landmarks using the trained model
- * @param {Object} handData - Hand landmark data from the camera
- * @param {Object} model - The trained gesture model
- * @returns {Object} - The recognized gesture and confidence score
- */
-export const recognizeGesture = (handData, model) => {
-  if (!handData || !model) {
-    return {
-      gesture: null,
-      confidence: 0
+class GestureRecognizer {
+  constructor() {
+    this.model = null;
+    this.metadata = null;
+    this.isLoaded = false;
+    this.confidenceThreshold = 0.65;
+    this.smoothingWindow = [];
+    this.windowSize = 5;
+    this.lastGesture = null;
+    this.gestureHoldTime = 0;
+    this.minHoldFrames = 3;
+  }
+
+  /**
+   * Normalize hand landmarks for model input
+   * @param {Array} landmarks - Array of hand landmarks (21 points with x,y,z coordinates)
+   * @returns {Array} - Normalized flattened landmarks
+   */
+  normalizeLandmarks(landmarks) {
+    if (!landmarks || landmarks.length !== 21) {
+      throw new Error('Invalid landmarks format: expected 21 landmarks');
+    }
+
+    // Flatten landmarks to [x1,y1,z1,x2,y2,z2,...]
+    const flatLandmarks = landmarks.flatMap(landmark => [
+      landmark.x, landmark.y, landmark.z
+    ]);
+
+    // Get wrist coordinates (first landmark)
+    const wristX = flatLandmarks[0];
+    const wristY = flatLandmarks[1];
+    const wristZ = flatLandmarks[2];
+
+    // Subtract wrist position to center at origin
+    const centeredLandmarks = new Array(flatLandmarks.length);
+    for (let i = 0; i < flatLandmarks.length; i += 3) {
+      centeredLandmarks[i] = flatLandmarks[i] - wristX;
+      centeredLandmarks[i + 1] = flatLandmarks[i + 1] - wristY;
+      centeredLandmarks[i + 2] = flatLandmarks[i + 2] - wristZ;
+    }
+
+    // Calculate scale factor based on middle finger tip distance
+    const middleTipIndex = 12 * 3; // Index 12 is middle finger tip
+    const dx = centeredLandmarks[middleTipIndex];
+    const dy = centeredLandmarks[middleTipIndex + 1];
+    const dz = centeredLandmarks[middleTipIndex + 2];
+    const distance = Math.sqrt(dx*dx + dy*dy + dz*dz) || 1;
+    const scale = 1 / distance;
+
+    // Apply scaling to all points
+    const normalizedLandmarks = new Array(centeredLandmarks.length);
+    for (let i = 0; i < centeredLandmarks.length; i++) {
+      normalizedLandmarks[i] = centeredLandmarks[i] * scale;
+    }
+
+    return normalizedLandmarks;
+  }
+
+  /**
+   * Load a trained gesture model
+   * @param {string} modelUrl - URL to the model file
+   * @param {string} metadataUrl - URL to the metadata file
+   * @returns {Promise<boolean>} - Resolves to true when model is loaded
+   */
+  async loadModel(modelUrl, metadataUrl) {
+    try {
+      // Load model
+      console.log(`Loading gesture model from ${modelUrl}`);
+      this.model = await tf.loadLayersModel(modelUrl);
+
+      // Load metadata
+      if (metadataUrl) {
+        console.log(`Loading model metadata from ${metadataUrl}`);
+        const response = await fetch(metadataUrl);
+        this.metadata = await response.json();
+      }
+
+      this.isLoaded = true;
+      console.log('Gesture model loaded successfully');
+
+      if (this.metadata && this.metadata.gestures) {
+        console.log(`Available gestures: ${this.metadata.gestures.join(', ')}`);
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error loading gesture model:', error);
+      throw error;
     }
   }
 
-  // In a real application, this would:
-  // 1. Process the hand landmark data to match the model's input format
-  // 2. Run inference on the model with the processed data
-  // 3. Return the predicted class and confidence score
+  /**
+   * Set model parameters
+   * @param {Object} params - Parameters object
+   * @param {number} params.confidenceThreshold - Minimum confidence for detection (0-1)
+   * @param {number} params.windowSize - Number of frames to smooth over
+   * @param {number} params.minHoldFrames - Minimum frames to hold a gesture
+   */
+  configure(params = {}) {
+    if (params.confidenceThreshold !== undefined) {
+      this.confidenceThreshold = Math.max(0, Math.min(1, params.confidenceThreshold));
+    }
 
-  // For this template, we're returning simulated recognition results
-  const availableGestures = model.gestures || []
+    if (params.windowSize !== undefined) {
+      this.windowSize = Math.max(1, params.windowSize);
+      this.smoothingWindow = []; // Reset window
+    }
 
-  if (availableGestures.length === 0) {
-    return { gesture: null, confidence: 0 }
+    if (params.minHoldFrames !== undefined) {
+      this.minHoldFrames = Math.max(1, params.minHoldFrames);
+    }
   }
 
-  // Generate a random gesture result for demo purposes
-  // In a real app, this would be the actual prediction from the model
-  const randomIndex = Math.floor(Math.random() * availableGestures.length)
-  const randomGesture = availableGestures[randomIndex]
+  /**
+   * Recognize gesture from hand landmarks
+   * @param {Array} landmarks - MediaPipe hand landmarks
+   * @returns {Object|null} - Recognized gesture or null
+   */
+  recognizeGesture(landmarks) {
+    if (!this.isLoaded || !landmarks || landmarks.length !== 21) {
+      return null;
+    }
 
-  // Generate a random confidence score between 0.6 and 0.99 for demo
-  const randomConfidence = 0.6 + (Math.random() * 0.39)
+    try {
+      // Normalize landmarks
+      const normalizedLandmarks = this.normalizeLandmarks(landmarks);
 
-  return {
-    gesture: randomGesture,
-    confidence: randomConfidence
+      // Prepare input tensor
+      const inputTensor = tf.tensor2d([normalizedLandmarks]);
+
+      // Get prediction
+      const prediction = this.model.predict(inputTensor);
+      const scores = prediction.dataSync();
+
+      // Get gesture mapping
+      const gestures = this.metadata?.gestures ||
+        Array.from({ length: scores.length }, (_, i) => `gesture_${i}`);
+
+      // Find the best score and gesture
+      let bestScore = 0;
+      let bestGestureIndex = -1;
+
+      for (let i = 0; i < scores.length; i++) {
+        if (scores[i] > bestScore) {
+          bestScore = scores[i];
+          bestGestureIndex = i;
+        }
+      }
+
+      // Create prediction object
+      const rawPrediction = {
+        gesture: gestures[bestGestureIndex],
+        confidence: bestScore,
+        allScores: Object.fromEntries(gestures.map((g, i) => [g, scores[i]]))
+      };
+
+      // Apply temporal smoothing
+      const smoothedPrediction = this.smoothPrediction(rawPrediction);
+
+      // Clean up tensors
+      inputTensor.dispose();
+      prediction.dispose();
+
+      return smoothedPrediction;
+
+    } catch (error) {
+      console.error('Error recognizing gesture:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Apply temporal smoothing to predictions
+   * @param {Object} rawPrediction - Raw prediction from model
+   * @returns {Object|null} - Smoothed prediction
+   */
+  smoothPrediction(rawPrediction) {
+    // Add current prediction to window
+    this.smoothingWindow.push(rawPrediction);
+
+    // Keep only the last N predictions
+    if (this.smoothingWindow.length > this.windowSize) {
+      this.smoothingWindow.shift();
+    }
+
+    // Count gesture occurrences and accumulate confidence
+    const gestureCounts = {};
+    const confidenceSum = {};
+
+    this.smoothingWindow.forEach(pred => {
+      gestureCounts[pred.gesture] = (gestureCounts[pred.gesture] || 0) + 1;
+      confidenceSum[pred.gesture] = (confidenceSum[pred.gesture] || 0) + pred.confidence;
+    });
+
+    // Find dominant gesture
+    let maxCount = 0;
+    let dominantGesture = null;
+    let avgConfidence = 0;
+
+    Object.entries(gestureCounts).forEach(([gesture, count]) => {
+      if (count > maxCount) {
+        maxCount = count;
+        dominantGesture = gesture;
+        avgConfidence = confidenceSum[gesture] / count;
+      }
+    });
+
+    // Check if it's a new or continuing gesture
+    if (dominantGesture === this.lastGesture?.gesture) {
+      this.gestureHoldTime++;
+    } else {
+      this.gestureHoldTime = 1;
+    }
+
+    // Only return if confidence is above threshold and held for minimum frames
+    if (avgConfidence >= this.confidenceThreshold && this.gestureHoldTime >= this.minHoldFrames) {
+      const result = {
+        gesture: dominantGesture,
+        confidence: avgConfidence,
+        holdTime: this.gestureHoldTime,
+        allScores: rawPrediction.allScores
+      };
+
+      this.lastGesture = result;
+      return result;
+    }
+
+    return null;
+  }
+
+  /**
+   * Test mode - get raw prediction without smoothing
+   * @param {Array} landmarks - MediaPipe hand landmarks
+   * @returns {Object|null} - Raw prediction or null
+   */
+  getRawPrediction(landmarks) {
+    if (!this.isLoaded || !landmarks || landmarks.length !== 21) {
+      return null;
+    }
+
+    try {
+      // Normalize landmarks
+      const normalizedLandmarks = this.normalizeLandmarks(landmarks);
+
+      // Prepare input tensor
+      const inputTensor = tf.tensor2d([normalizedLandmarks]);
+
+      // Get prediction
+      const prediction = this.model.predict(inputTensor);
+      const scores = prediction.dataSync();
+
+      // Get gesture mapping
+      const gestures = this.metadata?.gestures ||
+        Array.from({ length: scores.length }, (_, i) => `gesture_${i}`);
+
+      // Create scores object
+      const scoreObj = {};
+      gestures.forEach((gesture, i) => {
+        scoreObj[gesture] = scores[i];
+      });
+
+      // Clean up tensors
+      inputTensor.dispose();
+      prediction.dispose();
+
+      return {
+        scores: scoreObj,
+        topScores: Object.entries(scoreObj)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 3)
+          .map(([gesture, score]) => ({
+            gesture,
+            score
+          }))
+      };
+
+    } catch (error) {
+      console.error('Error getting raw prediction:', error);
+      return null;
+    }
   }
 }
 
-/**
- * Process the raw hand landmarks into a format suitable for the model
- * @param {Object} handData - Raw hand landmarks
- * @returns {Array} - Processed feature vector
- */
-export const prepareHandDataForInference = (handData) => {
-  if (!handData || !handData.landmarks) {
-    return null
-  }
-
-  // This is a placeholder function
-  // In a real implementation, this would process the landmarks
-  // similarly to how the training data was processed
-
-  // Extract features from landmarks
-  const features = []
-
-  // Process each landmark point
-  handData.landmarks.forEach(point => {
-    // Normalize and add features
-    features.push(point.x, point.y, point.z)
-  })
-
-  return features
-}
-
-/**
- * Get a confidence threshold for a specific gesture
- * @param {string} gestureName - Name of the gesture
- * @param {Object} model - The trained model
- * @returns {number} - The confidence threshold
- */
-export const getGestureConfidenceThreshold = (gestureName, model) => {
-  // In a real application, you might have different thresholds
-  // for different gestures or dynamically adjust them
-
-  // Default thresholds
-  const defaultThresholds = {
-    'thumbs_up': 0.75,
-    'victory': 0.8,
-    'open_hand': 0.7,
-    'pointing': 0.85,
-    'fist': 0.8
-  }
-
-  // Return the specific threshold or a default value
-  return defaultThresholds[gestureName] || 0.75
-}
+export default GestureRecognizer;

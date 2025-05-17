@@ -1,80 +1,332 @@
-.gesture-collector {
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  padding: 20px;
-  background-color: #f9f9f9;
-}
+/* Styles for the Gesture Data Collector component */
 
-.video-container {
-  margin: 15px 0;
-  position: relative;
-}
-
-.video-preview {
+.gesture-data-collector {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   width: 100%;
-  max-width: 640px;
-  border-radius: 8px;
-  transform: scaleX(-1);
-  /* Mirror video */
-  background-color: #000;
-  aspect-ratio: 16/9;
-  margin: 0 auto;
-  display: block;
 }
 
 .controls {
   display: flex;
-  gap: 10px;
-  margin: 15px 0;
-  justify-content: center;
-  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1rem;
 }
 
-.controls input {
-  padding: 10px;
-  border-radius: 4px;
-  border: 1px solid #ccc;
-  font-size: 16px;
-  width: 200px;
-}
-
-.record-btn,
-.stop-btn {
-  padding: 10px 20px;
+.controls button {
+  padding: 0.5rem 1rem;
   border: none;
-  border-radius: 4px;
-  font-size: 16px;
+  border-radius: 5px;
   cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+  font-family: var(--font-family);
+}
+
+.controls button:hover {
+  transform: translateY(-2px);
+}
+
+.start-button {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.stop-button {
+  background-color: var(--secondary-color);
+  color: white;
+}
+
+.stop-button[disabled],
+.start-button[disabled] {
+  background-color: #ccc;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.start-recording-button {
+  background-color: #e74c3c;
+  color: white;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+}
+
+.stop-recording-button {
+  background-color: #95a5a6;
+  color: white;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+}
+
+.capture-button {
+  background-color: var(--primary-color);
+  color: white;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+}
+
+.export-button {
+  background-color: var(--accent-color);
+  color: white;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+}
+
+.export-button:hover,
+.start-recording-button:hover,
+.stop-recording-button:hover,
+.capture-button:hover {
+  transform: translateY(-2px);
+}
+
+.export-button[disabled],
+.start-recording-button[disabled],
+.stop-recording-button[disabled],
+.capture-button[disabled] {
+  background-color: #ccc;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.error {
+  color: #e74c3c;
+  font-weight: bold;
+  margin: 1rem 0;
+  padding: 0.5rem;
+  background-color: #ffeaea;
+  border-radius: 5px;
+  width: 100%;
+  text-align: center;
+}
+
+.status {
+  color: var(--primary-color);
+  font-weight: bold;
+  margin: 1rem 0;
+  padding: 0.5rem;
+  background-color: #f5f5f5;
+  border-radius: 5px;
+  width: 100%;
+  text-align: center;
+}
+
+.video-container {
+  position: relative;
+  width: 100%;
+  margin: 1rem 0;
+  border-radius: 10px;
+  overflow: hidden;
+  background-color: #222;
+  aspect-ratio: 4/3;
+}
+
+.input-video {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1); /* Mirror video to make it more intuitive */
+}
+
+.output-canvas {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  transform: scaleX(-1); /* Mirror canvas to match video */
+}
+
+.gesture-preview {
+  width: 100%;
+  margin-bottom: 1rem;
+}
+
+.data-collection-panel {
+  width: 100%;
+  background-color: #f5f5f5;
+  padding: 1rem;
+  border-radius: 10px;
+  margin: 1rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.gesture-selector {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.gesture-selector label {
   font-weight: bold;
 }
 
-.record-btn {
-  background-color: #4CAF50;
+.gesture-selector select {
+  padding: 0.5rem;
+  border-radius: 5px;
+  border: 1px solid #ddd;
+  font-family: var(--font-family);
+  font-size: 1rem;
+  min-width: 200px;
+}
+
+.recording-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.recording-rate {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.recording-rate label {
+  font-weight: bold;
+}
+
+.recording-rate select {
+  padding: 0.5rem;
+  border-radius: 5px;
+  border: 1px solid #ddd;
+  font-family: var(--font-family);
+  font-size: 1rem;
+  min-width: 200px;
+}
+
+.recording-buttons {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.samples-counter {
+  margin-top: 1rem;
+}
+
+.samples-counter h3 {
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+}
+
+.samples-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.5rem;
+}
+
+.sample-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  background-color: #e9ecef;
+  border-radius: 3px;
+  transition: all 0.2s ease;
+}
+
+.sample-item.active {
+  background-color: var(--primary-color);
   color: white;
+  transform: scale(1.05);
 }
 
-.stop-btn {
-  background-color: #f44336;
-  color: white;
+.sample-item .label {
+  font-weight: bold;
 }
 
-.recordings-list {
-  margin-top: 20px;
-  text-align: left;
+.sample-item .count {
+  background-color: rgba(255, 255, 255, 0.2);
+  padding: 0.1rem 0.5rem;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  min-width: 30px;
+  text-align: center;
 }
 
-.recordings-list h3 {
-  border-bottom: 1px solid #ddd;
-  padding-bottom: 5px;
-  margin-bottom: 10px;
+.sample-item.active .count {
+  background-color: white;
+  color: var(--primary-color);
 }
 
-.recordings-list ul {
-  list-style-type: none;
-  padding: 0;
+.instructions {
+  background-color: #f5f5f5;
+  padding: 1rem;
+  border-radius: 10px;
+  margin-top: 1rem;
+  width: 100%;
 }
 
-.recordings-list li {
-  padding: 8px 0;
-  border-bottom: 1px solid #eee;
+.instructions h3 {
+  margin-top: 0;
+  color: var(--primary-color);
+}
+
+.instructions ol {
+  padding-left: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.instructions li {
+  margin-bottom: 0.5rem;
+}
+
+.gesture-tips {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px dashed #ccc;
+}
+
+.gesture-tips h4 {
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+  color: var(--secondary-color);
+}
+
+.gesture-tips ul {
+  padding-left: 1.5rem;
+}
+
+.gesture-tips li {
+  margin-bottom: 0.5rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .recording-buttons {
+    flex-direction: column;
+  }
+
+  .samples-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .samples-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .gesture-selector, .recording-rate {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }

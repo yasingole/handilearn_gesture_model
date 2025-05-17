@@ -1,97 +1,276 @@
-.gesture-trainer {
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  padding: 20px;
-  background-color: #f9f9f9;
+/* Styles for the Gesture Model Trainer component */
+
+.gesture-model-trainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.trainer-container {
+  display: flex;
+  width: 100%;
+  gap: 2rem;
+  margin-bottom: 2rem;
+}
+
+.trainer-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.upload-section,
+.model-params,
+.train-section,
+.log-section {
+  background-color: #f5f5f5;
+  padding: 1rem;
+  border-radius: 10px;
+}
+
+.upload-section h3,
+.model-params h3,
+.train-section h3,
+.log-section h3 {
+  margin-top: 0;
+  color: var(--primary-color);
+  margin-bottom: 1rem;
+}
+
+.upload-button,
+.train-button,
+.save-button,
+.test-button {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+  font-family: var(--font-family);
+}
+
+.upload-button {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.train-button {
+  background-color: var(--accent-color);
+  color: white;
+}
+
+.save-button {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.test-button {
+  background-color: var(--secondary-color);
+  color: white;
+}
+
+.upload-button:hover,
+.train-button:hover,
+.save-button:hover,
+.test-button:hover {
+  transform: translateY(-2px);
+}
+
+.upload-button:disabled,
+.train-button:disabled,
+.save-button:disabled,
+.test-button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.file-info {
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
 }
 
 .data-summary {
-  margin: 20px 0;
-  padding: 15px;
-  background-color: #fff;
-  border-radius: 6px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px dashed #ccc;
 }
 
-.gesture-categories {
-  margin-top: 10px;
+.data-summary h4 {
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+  color: var(--primary-color);
 }
 
-.gesture-categories ul {
-  list-style-type: none;
-  padding: 0;
+.gesture-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.5rem;
 }
 
-.gesture-categories li {
-  display: inline-block;
-  margin: 5px;
-  padding: 5px 10px;
-  background-color: #e5f2ff;
-  border-radius: 20px;
-  font-size: 14px;
-}
-
-.training-controls {
-  margin: 20px 0;
-}
-
-.train-btn {
-  padding: 10px 20px;
-  background-color: #2196F3;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  font-size: 16px;
-  cursor: pointer;
-  font-weight: bold;
-}
-
-.train-btn:disabled {
-  background-color: #b0b0b0;
-  cursor: not-allowed;
-}
-
-.progress-container {
-  margin-top: 15px;
-  height: 20px;
-  width: 100%;
-  background-color: #ddd;
-  border-radius: 10px;
-  position: relative;
-  overflow: hidden;
-}
-
-.progress-bar {
-  height: 100%;
-  background-color: #2196F3;
-  transition: width 0.3s ease;
-}
-
-.progress-container span {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+.gesture-item {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  justify-content: center;
-  color: #333;
-  font-weight: bold;
-  font-size: 12px;
-}
-
-.model-info {
-  margin-top: 20px;
-  padding: 15px;
-  background-color: #f0f8ff;
-  border-left: 4px solid #2196F3;
-  border-radius: 4px;
-}
-
-.model-info code {
-  font-family: monospace;
-  background-color: #e8e8e8;
-  padding: 2px 5px;
+  padding: 0.25rem 0.5rem;
+  background-color: #e9ecef;
   border-radius: 3px;
+}
+
+.gesture-item .label {
+  font-weight: bold;
+}
+
+.gesture-item .count {
+  background-color: var(--primary-color);
+  color: white;
+  padding: 0.1rem 0.5rem;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  min-width: 30px;
+  text-align: center;
+}
+
+.param-group {
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.param-group:last-child {
+  margin-bottom: 0;
+}
+
+.param-group label {
+  font-weight: bold;
+}
+
+.param-group input,
+.param-group select {
+  padding: 0.5rem;
+  border-radius: 5px;
+  border: 1px solid #ddd;
+  font-family: var(--font-family);
+  font-size: 1rem;
+}
+
+.param-help {
+  font-size: 0.8rem;
+  color: #666;
+  margin-top: 0.25rem;
+}
+
+.evaluation-results {
+  margin-top: 1rem;
+  padding: 1rem;
+  background-color: #e9ecef;
+  border-radius: 5px;
+}
+
+.evaluation-results h4 {
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+  color: var(--primary-color);
+}
+
+.result-item {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.25rem;
+}
+
+.accuracy {
+  font-weight: bold;
+  color: #27ae60;
+}
+
+.model-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.log-section {
+  flex: 1;
+  max-width: 500px;
+}
+
+.log-container {
+  max-height: 500px;
+  overflow-y: auto;
+  background-color: #222;
+  color: #f5f5f5;
+  padding: 1rem;
+  border-radius: 5px;
+  font-family: monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.log-entry {
+  margin-bottom: 0.25rem;
+  word-break: break-word;
+}
+
+.log-empty {
+  color: #aaa;
+  font-style: italic;
+}
+
+.training-indicator {
+  color: #e74c3c;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% { opacity: 0.7; }
+  50% { opacity: 1; }
+  100% { opacity: 0.7; }
+}
+
+.instructions {
+  background-color: #f5f5f5;
+  padding: 1rem;
+  border-radius: 10px;
+  margin-top: 1rem;
+  width: 100%;
+}
+
+.instructions h3 {
+  margin-top: 0;
+  color: var(--primary-color);
+}
+
+.instructions ol {
+  padding-left: 1.5rem;
+}
+
+.instructions li {
+  margin-bottom: 0.5rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1024px) {
+  .trainer-container {
+    flex-direction: column;
+  }
+
+  .log-section {
+    max-width: none;
+  }
+
+  .model-actions {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 600px) {
+  .gesture-list {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
