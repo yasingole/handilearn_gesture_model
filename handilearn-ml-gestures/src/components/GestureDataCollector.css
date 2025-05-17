@@ -1,0 +1,80 @@
+.gesture-collector {
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 20px;
+  background-color: #f9f9f9;
+}
+
+.video-container {
+  margin: 15px 0;
+  position: relative;
+}
+
+.video-preview {
+  width: 100%;
+  max-width: 640px;
+  border-radius: 8px;
+  transform: scaleX(-1);
+  /* Mirror video */
+  background-color: #000;
+  aspect-ratio: 16/9;
+  margin: 0 auto;
+  display: block;
+}
+
+.controls {
+  display: flex;
+  gap: 10px;
+  margin: 15px 0;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.controls input {
+  padding: 10px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  font-size: 16px;
+  width: 200px;
+}
+
+.record-btn,
+.stop-btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  font-size: 16px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.record-btn {
+  background-color: #4CAF50;
+  color: white;
+}
+
+.stop-btn {
+  background-color: #f44336;
+  color: white;
+}
+
+.recordings-list {
+  margin-top: 20px;
+  text-align: left;
+}
+
+.recordings-list h3 {
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 5px;
+  margin-bottom: 10px;
+}
+
+.recordings-list ul {
+  list-style-type: none;
+  padding: 0;
+}
+
+.recordings-list li {
+  padding: 8px 0;
+  border-bottom: 1px solid #eee;
+}
