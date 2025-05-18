@@ -164,6 +164,30 @@
   border-radius: 5px;
   width: 100%;
   text-align: center;
+  transition: all 0.3s ease;
+  animation: status-fade-in 0.5s ease;
+}
+
+@keyframes status-fade-in {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Enhanced styles for active capture methods */
+.countdown-button.active,
+.multi-capture-button.active,
+.start-recording-button.active {
+  animation: pulse 1s infinite;
+  background-color: #3498db;
+}
+
+/* Visual feedback during captures */
+.capturing .video-container {
+  box-shadow: 0 0 0 3px var(--primary-color);
+}
+
+.recording .video-container {
+  box-shadow: 0 0 0 3px var(--secondary-color);
 }
 
 .video-container {
@@ -174,6 +198,7 @@
   overflow: hidden;
   background-color: #222;
   aspect-ratio: 4/3;
+  transition: box-shadow 0.3s ease;
 }
 
 .input-video {

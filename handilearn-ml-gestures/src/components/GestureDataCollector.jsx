@@ -15,17 +15,25 @@ function GestureDataCollector({ gestureLabels = [] }) {
   // For data collection
   const [currentLabel, setCurrentLabel] = useState(gestureLabels[0] || 'open_hand');
   const [collectedSamples, setCollectedSamples] = useState({});
-  const [recordingInterval, setRecordingInterval] = useState(null);
-  const [isRecording, setIsRecording] = useState(false);
   const [samplesCount, setSamplesCount] = useState(0);
   const [recordingRate, setRecordingRate] = useState(500); // ms between samples
 
   // For countdown capture
   const [countdown, setCountdown] = useState(0);
   const [countdownActive, setCountdownActive] = useState(false);
+
+  // For multi-capture
   const [multiCaptureActive, setMultiCaptureActive] = useState(false);
   const [multiCaptureCount, setMultiCaptureCount] = useState(0);
   const [multiCaptureTotal, setMultiCaptureTotal] = useState(0);
+
+  // For continuous recording
+  const [isRecording, setIsRecording] = useState(false);
+
+  // Store interval IDs
+  const recordingIntervalRef = useRef(null);
+  const countdownIntervalRef = useRef(null);
+  const multiCaptureIntervalRef = useRef(null);
 
   // Default gesture labels if none provided
   const defaultGestureLabels = [
@@ -75,12 +83,24 @@ function GestureDataCollector({ gestureLabels = [] }) {
     });
     setCollectedSamples(initialSamples);
 
-    // Clean up on unmount
+    // Clean up function
     return () => {
       isMounted = false;
-      if (recordingInterval) {
-        clearInterval(recordingInterval);
+
+      // Clear all intervals
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
       }
+
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+      }
+
+      if (multiCaptureIntervalRef.current) {
+        clearInterval(multiCaptureIntervalRef.current);
+      }
+
+      // Stop tracking if active
       if (mediaHandUtils && isTracking) {
         try {
           mediaHandUtils.stopTracking();
@@ -100,16 +120,13 @@ function GestureDataCollector({ gestureLabels = [] }) {
       }
 
       if (isTracking) {
+        // Stop all capture methods
+        stopAllCaptureMethods();
+
+        // Stop tracking
         await mediaHandUtils.stopTracking();
         setIsTracking(false);
         setCurrentLandmarks(null);
-
-        // Also stop recording if active
-        if (recordingInterval) {
-          clearInterval(recordingInterval);
-          setRecordingInterval(null);
-          setIsRecording(false);
-        }
       } else {
         if (videoRef.current) {
           mediaHandUtils.setVideoElement(videoRef.current);
@@ -135,6 +152,30 @@ function GestureDataCollector({ gestureLabels = [] }) {
       console.error('Error toggling tracking:', err);
       setError(`Error: ${err.message}`);
       setIsTracking(false);
+    }
+  };
+
+  // Stop all capture methods
+  const stopAllCaptureMethods = () => {
+    // Stop recording if active
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current);
+      recordingIntervalRef.current = null;
+      setIsRecording(false);
+    }
+
+    // Stop countdown if active
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
+      setCountdownActive(false);
+    }
+
+    // Stop multi-capture if active
+    if (multiCaptureIntervalRef.current) {
+      clearInterval(multiCaptureIntervalRef.current);
+      multiCaptureIntervalRef.current = null;
+      setMultiCaptureActive(false);
     }
   };
 
@@ -292,7 +333,7 @@ function GestureDataCollector({ gestureLabels = [] }) {
   // Capture a single hand landmark sample
   const captureSample = () => {
     if (!currentLandmarks || currentLandmarks.length !== 21) {
-      return;
+      return false;
     }
 
     // Extract just the x, y, z coordinates into a flat array
@@ -316,6 +357,8 @@ function GestureDataCollector({ gestureLabels = [] }) {
 
     // Update the total samples count
     setSamplesCount(prevCount => prevCount + 1);
+
+    return true;
   };
 
   // Start countdown timer for automatic capture
@@ -325,19 +368,26 @@ function GestureDataCollector({ gestureLabels = [] }) {
       return;
     }
 
+    // Stop any other capture methods
+    stopAllCaptureMethods();
+
     setCountdown(seconds);
     setCountdownActive(true);
 
     // Create countdown interval
-    const countdownInterval = setInterval(() => {
+    countdownIntervalRef.current = setInterval(() => {
       setCountdown(prevCount => {
         if (prevCount <= 1) {
-          clearInterval(countdownInterval);
+          // Time to capture
+          clearInterval(countdownIntervalRef.current);
+          countdownIntervalRef.current = null;
           setCountdownActive(false);
-          // Capture after countdown reaches zero
+
+          // Capture after countdown
           if (currentLandmarks) {
             captureSample();
           }
+
           return 0;
         }
         return prevCount - 1;
@@ -352,6 +402,9 @@ function GestureDataCollector({ gestureLabels = [] }) {
       return;
     }
 
+    // Stop any other capture methods
+    stopAllCaptureMethods();
+
     setMultiCaptureActive(true);
     setMultiCaptureCount(1);
     setMultiCaptureTotal(count);
@@ -362,7 +415,9 @@ function GestureDataCollector({ gestureLabels = [] }) {
     }
 
     let captureCount = 1;
-    const multiCaptureInterval = setInterval(() => {
+
+    // Set up interval for remaining captures
+    multiCaptureIntervalRef.current = setInterval(() => {
       captureCount++;
       setMultiCaptureCount(captureCount);
 
@@ -371,7 +426,8 @@ function GestureDataCollector({ gestureLabels = [] }) {
       }
 
       if (captureCount >= count) {
-        clearInterval(multiCaptureInterval);
+        clearInterval(multiCaptureIntervalRef.current);
+        multiCaptureIntervalRef.current = null;
         setMultiCaptureActive(false);
       }
     }, interval);
@@ -381,9 +437,9 @@ function GestureDataCollector({ gestureLabels = [] }) {
   const toggleRecording = () => {
     if (isRecording) {
       // Stop recording
-      if (recordingInterval) {
-        clearInterval(recordingInterval);
-        setRecordingInterval(null);
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+        recordingIntervalRef.current = null;
       }
       setIsRecording(false);
     } else {
@@ -393,14 +449,16 @@ function GestureDataCollector({ gestureLabels = [] }) {
         return;
       }
 
+      // Stop any other capture methods
+      stopAllCaptureMethods();
+
       // Set up an interval to capture samples
-      const interval = setInterval(() => {
+      recordingIntervalRef.current = setInterval(() => {
         if (currentLandmarks) {
           captureSample();
         }
       }, recordingRate);
 
-      setRecordingInterval(interval);
       setIsRecording(true);
     }
   };
@@ -542,7 +600,7 @@ function GestureDataCollector({ gestureLabels = [] }) {
               <button
                 className="capture-button"
                 onClick={captureSample}
-                disabled={!isTracking || !currentLandmarks || countdownActive || multiCaptureActive}
+                disabled={!isTracking || !currentLandmarks || countdownActive || multiCaptureActive || isRecording}
               >
                 Capture Single Frame
               </button>
