@@ -88,20 +88,60 @@
   transition: all 0.2s ease;
 }
 
+/* New button styles for the timer-based capture */
+.countdown-button {
+  background-color: #3498db;
+  color: white;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+}
+
+.multi-capture-button {
+  background-color: #9b59b6;
+  color: white;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+}
+
+/* Button hover states */
 .export-button:hover,
 .start-recording-button:hover,
 .stop-recording-button:hover,
-.capture-button:hover {
+.capture-button:hover,
+.countdown-button:hover,
+.multi-capture-button:hover {
   transform: translateY(-2px);
 }
 
+/* Disabled button states */
 .export-button[disabled],
 .start-recording-button[disabled],
 .stop-recording-button[disabled],
-.capture-button[disabled] {
+.capture-button[disabled],
+.countdown-button[disabled],
+.multi-capture-button[disabled] {
   background-color: #ccc;
   cursor: not-allowed;
   transform: none;
+}
+
+/* Add animation for active countdown */
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+.countdown-button:not([disabled]) {
+  animation: pulse 1s infinite;
 }
 
 .error {
@@ -212,10 +252,9 @@
 }
 
 .recording-buttons {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
 }
 
 .samples-counter {
@@ -289,6 +328,10 @@
   margin-bottom: 0.5rem;
 }
 
+.instructions ul {
+  margin-top: 0.5rem;
+}
+
 .gesture-tips {
   margin-top: 1rem;
   padding-top: 1rem;
@@ -309,10 +352,63 @@
   margin-bottom: 0.5rem;
 }
 
+/* Side-by-side layout optimization */
+@media (min-width: 992px) {
+  .gesture-data-collector {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    align-items: flex-start;
+  }
+
+  .gesture-data-collector h2 {
+    width: 100%;
+  }
+
+  .controls {
+    width: 100%;
+    margin-bottom: 1.5rem;
+  }
+
+  .video-container-section {
+    flex: 1;
+    min-width: 320px;
+    max-width: 640px;
+    position: sticky;
+    top: 1rem;
+  }
+
+  .data-collection-section {
+    flex: 1;
+    min-width: 320px;
+  }
+
+  .video-container {
+    margin: 0;
+    aspect-ratio: 4/3;
+    width: 100%;
+  }
+
+  .gesture-preview {
+    margin-top: 1rem;
+    margin-bottom: 0;
+  }
+
+  .instructions {
+    width: 100%;
+    margin-top: 2rem;
+  }
+
+  .status, .error {
+    width: 100%;
+  }
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
   .recording-buttons {
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
 
   .samples-grid {

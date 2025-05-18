@@ -20,6 +20,13 @@ function GestureDataCollector({ gestureLabels = [] }) {
   const [samplesCount, setSamplesCount] = useState(0);
   const [recordingRate, setRecordingRate] = useState(500); // ms between samples
 
+  // For countdown capture
+  const [countdown, setCountdown] = useState(0);
+  const [countdownActive, setCountdownActive] = useState(false);
+  const [multiCaptureActive, setMultiCaptureActive] = useState(false);
+  const [multiCaptureCount, setMultiCaptureCount] = useState(0);
+  const [multiCaptureTotal, setMultiCaptureTotal] = useState(0);
+
   // Default gesture labels if none provided
   const defaultGestureLabels = [
     'open_hand',
@@ -163,6 +170,55 @@ function GestureDataCollector({ gestureLabels = [] }) {
         }
       }
     }
+
+    // Draw countdown if active
+    if (countdownActive && countdown > 0) {
+      drawCountdown(ctx, countdown, width, height);
+    }
+
+    // Draw multi-capture indicator if active
+    if (multiCaptureActive) {
+      drawMultiCaptureIndicator(ctx, multiCaptureCount, multiCaptureTotal, width, height);
+    }
+  };
+
+  // Draw countdown overlay on canvas
+  const drawCountdown = (ctx, count, width, height) => {
+    ctx.save();
+
+    // Semi-transparent background
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.fillRect(0, 0, width, height);
+
+    // Big number
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = `bold ${height / 3}px Arial`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(count.toString(), width / 2, height / 2);
+
+    // Instruction text
+    ctx.font = 'bold 24px Arial';
+    ctx.fillText('Get your hand ready!', width / 2, height / 2 + height / 5);
+
+    ctx.restore();
+  };
+
+  // Draw multi-capture indicator
+  const drawMultiCaptureIndicator = (ctx, current, total, width, height) => {
+    ctx.save();
+
+    // Info text at the top
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(0, 0, width, 40);
+
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 18px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`Capturing ${current} of ${total}...`, width / 2, 20);
+
+    ctx.restore();
   };
 
   // Draw connections between landmarks to show hand structure
@@ -262,6 +318,65 @@ function GestureDataCollector({ gestureLabels = [] }) {
     setSamplesCount(prevCount => prevCount + 1);
   };
 
+  // Start countdown timer for automatic capture
+  const startCountdownCapture = (seconds = 3) => {
+    if (!isTracking) {
+      setError("Please start tracking first!");
+      return;
+    }
+
+    setCountdown(seconds);
+    setCountdownActive(true);
+
+    // Create countdown interval
+    const countdownInterval = setInterval(() => {
+      setCountdown(prevCount => {
+        if (prevCount <= 1) {
+          clearInterval(countdownInterval);
+          setCountdownActive(false);
+          // Capture after countdown reaches zero
+          if (currentLandmarks) {
+            captureSample();
+          }
+          return 0;
+        }
+        return prevCount - 1;
+      });
+    }, 1000);
+  };
+
+  // Start sequence of multiple captures with timing
+  const startMultiCapture = (count = 5, interval = 800) => {
+    if (!isTracking) {
+      setError("Please start tracking first!");
+      return;
+    }
+
+    setMultiCaptureActive(true);
+    setMultiCaptureCount(1);
+    setMultiCaptureTotal(count);
+
+    // Capture first sample immediately
+    if (currentLandmarks) {
+      captureSample();
+    }
+
+    let captureCount = 1;
+    const multiCaptureInterval = setInterval(() => {
+      captureCount++;
+      setMultiCaptureCount(captureCount);
+
+      if (currentLandmarks) {
+        captureSample();
+      }
+
+      if (captureCount >= count) {
+        clearInterval(multiCaptureInterval);
+        setMultiCaptureActive(false);
+      }
+    }, interval);
+  };
+
   // Start/stop recording samples at intervals
   const toggleRecording = () => {
     if (isRecording) {
@@ -358,99 +473,121 @@ function GestureDataCollector({ gestureLabels = [] }) {
       {isInitializing && <div className="status">Initializing hand tracking...</div>}
       {error && <div className="error">{error}</div>}
 
-      <div className="video-container">
-        <video
-          ref={videoRef}
-          className="input-video"
-          playsInline
-          muted
-        ></video>
-        <canvas
-          ref={canvasRef}
-          className="output-canvas"
-        ></canvas>
-      </div>
-
-      <div className="gesture-preview">
-        {currentLandmarks && (
-          <GesturePreview
-            landmarks={currentLandmarks}
-            label={currentLabel}
-          />
-        )}
-      </div>
-
-      <div className="data-collection-panel">
-        <div className="gesture-selector">
-          <label htmlFor="gesture-select">Current Gesture:</label>
-          <select
-            id="gesture-select"
-            value={currentLabel}
-            onChange={(e) => setCurrentLabel(e.target.value)}
-            disabled={isRecording}
-          >
-            {effectiveGestureLabels.map(label => (
-              <option key={label} value={label}>
-                {formatGestureName(label)}
-              </option>
-            ))}
-          </select>
+      <div className="video-container-section">
+        <div className="video-container">
+          <video
+            ref={videoRef}
+            className="input-video"
+            playsInline
+            muted
+          ></video>
+          <canvas
+            ref={canvasRef}
+            className="output-canvas"
+          ></canvas>
         </div>
 
-        <div className="recording-controls">
-          <div className="recording-rate">
-            <label htmlFor="rate-select">Sample Rate:</label>
+        <div className="gesture-preview">
+          {currentLandmarks && (
+            <GesturePreview
+              landmarks={currentLandmarks}
+              label={currentLabel}
+            />
+          )}
+        </div>
+      </div>
+
+      <div className="data-collection-section">
+        <div className="data-collection-panel">
+          <div className="gesture-selector">
+            <label htmlFor="gesture-select">Current Gesture:</label>
             <select
-              id="rate-select"
-              value={recordingRate}
-              onChange={(e) => setRecordingRate(Number(e.target.value))}
-              disabled={isRecording}
+              id="gesture-select"
+              value={currentLabel}
+              onChange={(e) => setCurrentLabel(e.target.value)}
+              disabled={isRecording || countdownActive || multiCaptureActive}
             >
-              <option value="200">Very Fast (200ms)</option>
-              <option value="500">Normal (500ms)</option>
-              <option value="1000">Slow (1s)</option>
+              {effectiveGestureLabels.map(label => (
+                <option key={label} value={label}>
+                  {formatGestureName(label)}
+                </option>
+              ))}
             </select>
           </div>
 
-          <div className="recording-buttons">
-            <button
-              className={isRecording ? "stop-recording-button" : "start-recording-button"}
-              onClick={toggleRecording}
-              disabled={!isTracking}
-            >
-              {isRecording ? 'Stop Recording' : 'Start Recording'}
-            </button>
-
-            <button
-              className="capture-button"
-              onClick={captureSample}
-              disabled={!isTracking || !currentLandmarks}
-            >
-              Capture Single Frame
-            </button>
-
-            <button
-              className="export-button"
-              onClick={exportData}
-              disabled={samplesCount === 0}
-            >
-              Export Data ({samplesCount} samples)
-            </button>
-          </div>
-        </div>
-
-        <div className="samples-counter">
-          <h3>Samples Collected:</h3>
-          <div className="samples-grid">
-            {Object.entries(getGestureCounts()).map(([label, count]) => (
-              <div
-                key={label}
-                className={`sample-item ${currentLabel === label ? 'active' : ''}`}
+          <div className="recording-controls">
+            <div className="recording-rate">
+              <label htmlFor="rate-select">Sample Rate:</label>
+              <select
+                id="rate-select"
+                value={recordingRate}
+                onChange={(e) => setRecordingRate(Number(e.target.value))}
+                disabled={isRecording || countdownActive || multiCaptureActive}
               >
-                <span className="label">{formatGestureName(label)}</span>
-                <span className="count">{count}</span>
-              </div>
-            ))}
+                <option value="200">Very Fast (200ms)</option>
+                <option value="500">Normal (500ms)</option>
+                <option value="1000">Slow (1s)</option>
+              </select>
+            </div>
+
+            <div className="recording-buttons">
+              <button
+                className={isRecording ? "stop-recording-button" : "start-recording-button"}
+                onClick={toggleRecording}
+                disabled={!isTracking || countdownActive || multiCaptureActive}
+              >
+                {isRecording ? 'Stop Recording' : 'Start Recording'}
+              </button>
+
+              <button
+                className="capture-button"
+                onClick={captureSample}
+                disabled={!isTracking || !currentLandmarks || countdownActive || multiCaptureActive}
+              >
+                Capture Single Frame
+              </button>
+
+              <button
+                className="countdown-button"
+                onClick={() => startCountdownCapture(3)}
+                disabled={!isTracking || countdownActive || isRecording || multiCaptureActive}
+              >
+                {countdownActive ? `Capturing in ${countdown}...` : '3s Countdown Capture'}
+              </button>
+
+              <button
+                className="multi-capture-button"
+                onClick={() => startMultiCapture(5, 800)}
+                disabled={!isTracking || countdownActive || isRecording || multiCaptureActive}
+              >
+                {multiCaptureActive
+                  ? `Capturing ${multiCaptureCount}/${multiCaptureTotal}`
+                  : 'Auto-Capture 5 Frames'}
+              </button>
+
+              <button
+                className="export-button"
+                onClick={exportData}
+                disabled={samplesCount === 0}
+              >
+                Export Data ({samplesCount} samples)
+              </button>
+            </div>
+          </div>
+
+          <div className="samples-counter">
+            <h3>Samples Collected:</h3>
+            <div className="samples-grid">
+              {Object.entries(getGestureCounts()).map(([label, count]) => (
+                <div
+                  key={label}
+                  className={`sample-item ${currentLabel === label ? 'active' : ''}`}
+                >
+                  <span className="label">{formatGestureName(label)}</span>
+                  <span className="count">{count}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -461,13 +598,16 @@ function GestureDataCollector({ gestureLabels = [] }) {
           <li>Start tracking using the button above</li>
           <li>Select a gesture from the dropdown</li>
           <li>Position your hand in the camera view</li>
-          <li>Press "Start Recording" to collect samples automatically</li>
-          <li>Make the selected gesture while recording, moving your hand slightly to capture varied positions</li>
-          <li>Stop recording and switch to a different gesture</li>
-          <li>Repeat for all gestures you want to train</li>
-          <li>Click "Export Data" to download the collected samples</li>
+          <li>Use one of the capture methods:
+            <ul>
+              <li><strong>Countdown Capture:</strong> Gives you 3 seconds to prepare before capturing</li>
+              <li><strong>Auto-Capture:</strong> Takes 5 samples automatically with slight delays</li>
+              <li><strong>Start Recording:</strong> Continuously captures samples at the set rate</li>
+            </ul>
+          </li>
+          <li>Try to collect at least 20-30 samples per gesture in different positions</li>
+          <li>Click "Export Data" when done to download all samples</li>
         </ol>
-        <p><strong>Note:</strong> Try to collect at least 20-30 samples per gesture in different positions and orientations for better model training.</p>
 
         <div className="gesture-tips">
           <h4>Tips for specific gestures:</h4>
