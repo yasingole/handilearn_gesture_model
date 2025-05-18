@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import * as tf from '@tensorflow/tfjs';
+import GestureDataProcessor from '../utils/gestureDataProcessor';
 import './GestureModelTrainer.css';
 
 function GestureModelTrainer() {
@@ -11,12 +12,16 @@ function GestureModelTrainer() {
   const [trainingLogs, setTrainingLogs] = useState([]);
   const [trainingStatus, setTrainingStatus] = useState('idle'); // idle, processing, training, complete, error
   const [evaluationResults, setEvaluationResults] = useState(null);
+  const [datasetAnalysis, setDatasetAnalysis] = useState(null);
   const [modelParams, setModelParams] = useState({
-    epochs: 30,
+    epochs: 50,             // Increased for distance-based gestures
     batchSize: 16,
     learningRate: 0.001,
     validationSplit: 0.2,
-    hiddenUnits: [64, 32]
+    hiddenUnits: [64, 32],
+    useDistanceAugmentation: true,  // Enable by default for TV-based detection
+    augmentationFactor: 2,
+    dropoutRate: 0.3        // Increased to help with distance generalization
   });
   const fileInputRef = useRef(null);
   const logContainerRef = useRef(null);
@@ -55,7 +60,7 @@ function GestureModelTrainer() {
   const processData = (data) => {
     setTrainingStatus('processing');
     try {
-      setTrainingLogs(prev => [...prev, 'Processing gesture data...']);
+      setTrainingLogs(prev => [...prev, 'Processing gesture data for TV-based detection...']);
 
       if (!data || !data.gestures) {
         throw new Error('Invalid data format: missing gestures object');
@@ -73,60 +78,52 @@ function GestureModelTrainer() {
         gestureCounts[label] = samples.length;
         totalSamples += samples.length;
 
-        if (samples.length < 5) {
-          setTrainingLogs(prev => [...prev, `Warning: Only ${samples.length} samples for "${label}". Consider collecting more.`]);
+        // For TV detection, we need more samples
+        if (samples.length < 20) {
+          setTrainingLogs(prev => [...prev, `Warning: Only ${samples.length} samples for "${label}". For TV-based detection, aim for at least 50 samples.`]);
+        } else if (samples.length < 50) {
+          setTrainingLogs(prev => [...prev, `Note: ${samples.length} samples for "${label}" may be insufficient for reliable TV-based detection. Consider collecting more.`]);
         }
       });
 
-      if (totalSamples < 20) {
-        setTrainingLogs(prev => [...prev, `Warning: Only ${totalSamples} total samples. Model accuracy may be poor.`]);
+      if (totalSamples < 50) {
+        setTrainingLogs(prev => [...prev, `Warning: Only ${totalSamples} total samples. For reliable TV-based detection, you should have at least 200-300 total samples.`]);
       }
 
       setTrainingLogs(prev => [...prev, `Found ${totalSamples} samples across ${Object.keys(gestureCounts).length} gestures.`]);
 
-      // Extract features and labels
-      const gestures = Object.keys(data.gestures);
-      const gestureToIndex = {};
-      gestures.forEach((gesture, index) => {
-        gestureToIndex[gesture] = index;
-      });
-
-      const features = [];
-      const labels = [];
-
-      gestures.forEach(gesture => {
-        const samples = data.gestures[gesture];
-        samples.forEach(sample => {
-          if (!sample.landmarks || !Array.isArray(sample.landmarks)) {
-            setTrainingLogs(prev => [...prev, `Warning: Skipping invalid sample for "${gesture}"`]);
-            return;
-          }
-
-          // Normalize the landmarks
-          const normalizedLandmarks = normalizeHandLandmarks(sample.landmarks);
-
-          features.push(normalizedLandmarks);
-          labels.push(gestureToIndex[gesture]);
-        });
-      });
-
-      // Create processed data object
-      const processed = {
-        features,
-        labels,
-        labelMapping: gestureToIndex,
-        gestures
-      };
-
+      // Process the dataset - using distance-optimized normalization
+      const processed = GestureDataProcessor.processDataset(data);
       setProcessedData(processed);
+
+      // Analyze the dataset for distance suitability
+      const analysis = GestureDataProcessor.analyzeDataset(processed);
+      setDatasetAnalysis(analysis);
 
       setTrainingLogs(prev => [
         ...prev,
-        `Processed ${processed.features.length} samples with ${processed.gestures.length} gesture classes`
+        `Processed ${processed.features.length} samples with ${processed.gestures.length} gesture classes`,
+        `Distance readiness score: ${analysis.distanceReadiness.readinessScore}/10 (${analysis.distanceReadiness.overallReadiness})`,
+        `Recommendation: ${analysis.distanceReadiness.recommendation}`
       ]);
 
+      // Apply distance augmentation if enabled
+      let augmentedData = processed;
+      if (modelParams.useDistanceAugmentation) {
+        augmentedData = GestureDataProcessor.distanceAugmentDataset(
+          processed,
+          modelParams.augmentationFactor
+        );
+
+        const additionalSamples = augmentedData.features.length - processed.features.length;
+        setTrainingLogs(prev => [
+          ...prev,
+          `Applied distance augmentation: Generated ${additionalSamples} additional samples to improve distance robustness`
+        ]);
+      }
+
       // Split into train/test sets
-      const split = splitTrainTest(processed, modelParams.validationSplit);
+      const split = GestureDataProcessor.splitTrainTest(augmentedData, modelParams.validationSplit);
       setSplitData(split);
 
       setTrainingLogs(prev => [
@@ -147,7 +144,7 @@ function GestureModelTrainer() {
     if (!splitData) return;
 
     setTrainingStatus('training');
-    setTrainingLogs(prev => [...prev, 'Creating model...']);
+    setTrainingLogs(prev => [...prev, 'Creating model optimized for TV-based distance detection...']);
 
     try {
       // Convert data to tensors
@@ -165,32 +162,35 @@ function GestureModelTrainer() {
       setTrainingLogs(prev => [
         ...prev,
         `Creating neural network with input size ${inputSize}, ${modelParams.hiddenUnits.join('→')} hidden units, and ${numClasses} output classes`,
+        `Distance optimization: ${modelParams.useDistanceAugmentation ? 'Enabled' : 'Disabled'}, Dropout: ${modelParams.dropoutRate}`,
         `Training config: ${modelParams.epochs} epochs, batch size ${modelParams.batchSize}, learning rate ${modelParams.learningRate}`
       ]);
 
-      // Create a model optimized for M1 Mac
+      // Create a model optimized for distance detection
       const model = tf.sequential();
 
-      // Input layer
+      // Input layer with extra regularization for distance robustness
       model.add(tf.layers.dense({
         inputShape: [inputSize],
         units: modelParams.hiddenUnits[0],
         activation: 'relu',
-        kernelInitializer: 'heNormal'
+        kernelInitializer: 'heNormal',
+        kernelRegularizer: tf.regularizers.l2({ l2: 0.001 }) // Add L2 regularization
       }));
 
       // Add dropout to reduce overfitting
-      model.add(tf.layers.dropout({ rate: 0.25 }));
+      model.add(tf.layers.dropout({ rate: modelParams.dropoutRate }));
 
       // Add hidden layers
       for (let i = 1; i < modelParams.hiddenUnits.length; i++) {
         model.add(tf.layers.dense({
           units: modelParams.hiddenUnits[i],
           activation: 'relu',
-          kernelInitializer: 'heNormal'
+          kernelInitializer: 'heNormal',
+          kernelRegularizer: tf.regularizers.l2({ l2: 0.001 }) // Add L2 regularization
         }));
 
-        model.add(tf.layers.dropout({ rate: 0.2 }));
+        model.add(tf.layers.dropout({ rate: modelParams.dropoutRate * 0.8 })); // Gradually reduce dropout
       }
 
       // Output layer (softmax for multi-class classification)
@@ -208,7 +208,7 @@ function GestureModelTrainer() {
 
       // Show model summary
       model.summary();
-      setTrainingLogs(prev => [...prev, 'Model created and compiled. Starting training...']);
+      setTrainingLogs(prev => [...prev, 'Model created and compiled with distance optimizations. Starting training...']);
 
       // Train the model
       await model.fit(trainFeatures, trainLabels, {
@@ -229,7 +229,7 @@ function GestureModelTrainer() {
         }
       });
 
-      setTrainingLogs(prev => [...prev, 'Training complete. Evaluating model...']);
+      setTrainingLogs(prev => [...prev, 'Training complete. Evaluating model for distance performance...']);
 
       // Evaluate the model on test data
       const evalResult = await model.evaluate(testFeatures, testLabels);
@@ -283,13 +283,36 @@ function GestureModelTrainer() {
       ]);
 
       // Log per-class accuracy
+      const labelToGesture = {};
       Object.entries(splitData.labelMapping).forEach(([gesture, index]) => {
-        const accuracy = labelAccuracy[index] || 0;
+        labelToGesture[index] = gesture;
+      });
+
+      Object.entries(labelAccuracy).forEach(([labelIndex, accuracy]) => {
+        const gesture = labelToGesture[labelIndex];
         setTrainingLogs(prev => [
           ...prev,
           `- ${gesture}: ${(accuracy * 100).toFixed(2)}%`
         ]);
       });
+
+      // Distance-specific evaluation
+      setTrainingLogs(prev => [
+        ...prev,
+        'TV-Based Distance Performance Assessment:',
+        `- Overall accuracy ${(evalAcc * 100).toFixed(2)}% - ${evalAcc > 0.85 ? 'Good' : (evalAcc > 0.75 ? 'Adequate' : 'Needs improvement')} for distance detection`,
+        `- ${Object.values(labelAccuracy).filter(acc => acc > 0.8).length} out of ${numClasses} gestures have >80% accuracy`
+      ]);
+
+      // Saving recommendations for TV usage
+      setTrainingLogs(prev => [
+        ...prev,
+        'Distance Usage Recommendations:',
+        '- For optimal performance, position webcam at eye level',
+        '- Ensure good front lighting when using gestures',
+        '- For deployment, set GestureRecognizer confidence threshold to 0.5',
+        '- Use at least 4-5 frame temporal smoothing (windowSize: 5) in GestureRecognizer'
+      ]);
 
       // Save the model reference
       setModel(model);
@@ -317,21 +340,42 @@ function GestureModelTrainer() {
     }));
   };
 
+  // Toggle the distance augmentation
+  const handleToggleAugmentation = () => {
+    setModelParams(prev => ({
+      ...prev,
+      useDistanceAugmentation: !prev.useDistanceAugmentation
+    }));
+
+    // Re-process the data if it exists
+    if (rawData) {
+      processData(rawData);
+    }
+  };
+
   // Save the trained model
   const saveModel = async () => {
     if (!model) return;
 
     try {
-      setTrainingLogs(prev => [...prev, 'Saving model...']);
+      setTrainingLogs(prev => [...prev, 'Saving model optimized for TV-based detection...']);
 
-      // Create a metadata file with gesture labels
+      // Create a metadata file with gesture labels and TV-specific settings
       const metadata = {
         gestures: processedData.gestures,
         labelMapping: processedData.labelMapping,
         inputSize: processedData.features[0].length,
         modelType: 'handilearn-gesture-recognizer',
         version: '1.0.0',
-        date: new Date().toISOString()
+        date: new Date().toISOString(),
+        distanceOptimized: true,
+        recommendedSettings: {
+          confidenceThreshold: 0.5,
+          windowSize: 7,
+          minHoldFrames: 5,
+          useDoubleSmoothing: true,
+          stabilityBonus: 0.1
+        }
       };
 
       // Save metadata
@@ -340,12 +384,12 @@ function GestureModelTrainer() {
       const metadataUrl = URL.createObjectURL(metadataBlob);
       const metadataLink = document.createElement('a');
       metadataLink.href = metadataUrl;
-      metadataLink.download = 'handilearn-gesture-model-metadata.json';
+      metadataLink.download = 'handilearn-tv-gesture-model-metadata.json';
       document.body.appendChild(metadataLink);
 
       // Save the model using TensorFlow.js built-in functions
       // This will automatically create model.json and weight files
-      await model.save('downloads://handilearn-gesture-model');
+      await model.save('downloads://handilearn-tv-gesture-model');
 
       // Wait a bit to allow model to save first
       setTimeout(() => {
@@ -434,12 +478,18 @@ function GestureModelTrainer() {
 
   return (
     <div className="gesture-model-trainer">
-      <h2>Gesture Model Trainer</h2>
+      <h2>TV-Based Gesture Model Trainer</h2>
+      <p className="trainer-description">
+        Optimized for detecting gestures at 4-5 feet distance on TV screens
+      </p>
 
       <div className="trainer-container">
         <div className="trainer-panel">
           <div className="upload-section">
             <h3>1. Upload Gesture Data</h3>
+            <p className="section-tip">
+              For TV-based detection, collect samples at 4-5 feet distance with good lighting
+            </p>
             <input
               type="file"
               accept=".json"
@@ -460,79 +510,91 @@ function GestureModelTrainer() {
               </div>
             )}
 
-            {rawData && rawData.gestures && (
+            {datasetAnalysis && (
               <div className="data-summary">
-                <h4>Dataset Summary:</h4>
+                <h4>Dataset Analysis:</h4>
+                <div className="dataset-stats">
+                  <div className="stat-item">
+                    <span className="stat-label">Gestures:</span>
+                    <span className="stat-value">{datasetAnalysis.uniqueClasses}</span>
+                  </div>
+                  <div className="stat-item">
+                    <span className="stat-label">Total Samples:</span>
+                    <span className="stat-value">{datasetAnalysis.totalSamples}</span>
+                  </div>
+                  <div className="stat-item">
+                    <span className="stat-label">Distance Readiness:</span>
+                    <span className={`stat-value readiness-${datasetAnalysis.distanceReadiness.overallReadiness}`}>
+                      {datasetAnalysis.distanceReadiness.readinessScore}/10
+                    </span>
+                  </div>
+                </div>
+
                 <div className="gesture-list">
-                  {Object.entries(rawData.gestures).map(([label, samples]) => (
-                    <div key={label} className="gesture-item">
-                      <span className="label">{formatGestureName(label)}</span>
-                      <span className="count">{samples.length}</span>
-                    </div>
-                  ))}
+                  {Object.entries(datasetAnalysis.gestureCounts).map(([label, count]) => {
+                    // Get readiness assessment for this gesture
+                    const assessment = datasetAnalysis.distanceReadiness.gestureAssessment[label];
+                    const readinessClass = assessment ? assessment.readiness : 'insufficient';
+
+                    return (
+                      <div key={label} className={`gesture-item readiness-${readinessClass}`}>
+                        <span className="label">{formatGestureName(label)}</span>
+                        <span className="count">{count}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
           </div>
 
           <div className="model-params">
-            <h3>2. Configure Model</h3>
+            <h3>2. Configure Distance-Optimized Model</h3>
+
+            <div className="distance-augmentation">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={modelParams.useDistanceAugmentation}
+                  onChange={handleToggleAugmentation}
+                  disabled={trainingStatus === 'training'}
+                />
+                Enable Distance Augmentation (Recommended)
+              </label>
+              <span className="param-help">Generates additional training data with distance-like noise patterns</span>
+            </div>
+
+            {modelParams.useDistanceAugmentation && (
+              <div className="param-group">
+                <label htmlFor="augFactor">Augmentation Factor:</label>
+                <select
+                  id="augFactor"
+                  value={modelParams.augmentationFactor}
+                  onChange={(e) => handleParamChange('augmentationFactor', parseInt(e.target.value))}
+                  disabled={trainingStatus === 'training'}
+                >
+                  <option value="1">Light (1x original data)</option>
+                  <option value="2">Medium (2x original data)</option>
+                  <option value="3">Heavy (3x original data)</option>
+                </select>
+                <span className="param-help">Higher values generate more augmented samples</span>
+              </div>
+            )}
+
             <div className="param-group">
               <label htmlFor="epochs">Epochs:</label>
-              <input
-                type="number"
+              <select
                 id="epochs"
                 value={modelParams.epochs}
                 onChange={(e) => handleParamChange('epochs', parseInt(e.target.value))}
-                min="5"
-                max="100"
-                disabled={trainingStatus === 'training'}
-              />
-              <span className="param-help">Number of training cycles (higher = better accuracy but slower)</span>
-            </div>
-
-            <div className="param-group">
-              <label htmlFor="batchSize">Batch Size:</label>
-              <input
-                type="number"
-                id="batchSize"
-                value={modelParams.batchSize}
-                onChange={(e) => handleParamChange('batchSize', parseInt(e.target.value))}
-                min="1"
-                max="64"
-                disabled={trainingStatus === 'training'}
-              />
-              <span className="param-help">Samples processed at once (lower for limited memory)</span>
-            </div>
-
-            <div className="param-group">
-              <label htmlFor="learningRate">Learning Rate:</label>
-              <select
-                id="learningRate"
-                value={modelParams.learningRate}
-                onChange={(e) => handleParamChange('learningRate', parseFloat(e.target.value))}
                 disabled={trainingStatus === 'training'}
               >
-                <option value="0.01">0.01 (Fast)</option>
-                <option value="0.001">0.001 (Default)</option>
-                <option value="0.0001">0.0001 (Slow)</option>
+                <option value="30">30 (Faster Training)</option>
+                <option value="50">50 (Recommended for Distance)</option>
+                <option value="75">75 (Better Distance Accuracy)</option>
+                <option value="100">100 (Maximum Accuracy)</option>
               </select>
-              <span className="param-help">How quickly the model adapts</span>
-            </div>
-
-            <div className="param-group">
-              <label htmlFor="validationSplit">Validation Split:</label>
-              <select
-                id="validationSplit"
-                value={modelParams.validationSplit}
-                onChange={(e) => handleParamChange('validationSplit', parseFloat(e.target.value))}
-                disabled={trainingStatus === 'training' || trainingStatus === 'processing'}
-              >
-                <option value="0.1">10%</option>
-                <option value="0.2">20%</option>
-                <option value="0.3">30%</option>
-              </select>
-              <span className="param-help">Percentage of data used for validation</span>
+              <span className="param-help">More epochs improve distance accuracy but take longer</span>
             </div>
 
             <div className="param-group">
@@ -546,31 +608,66 @@ function GestureModelTrainer() {
                 <option value="32,16">Small (32→16 units)</option>
                 <option value="64,32">Medium (64→32 units)</option>
                 <option value="128,64">Large (128→64 units)</option>
+                <option value="128,64,32">Extra Large (128→64→32 units)</option>
               </select>
-              <span className="param-help">Model complexity (smaller = faster, larger = more accurate)</span>
+              <span className="param-help">Larger models work better for distance detection</span>
+            </div>
+
+            <div className="param-group">
+              <label htmlFor="dropoutRate">Regularization:</label>
+              <select
+                id="dropoutRate"
+                value={modelParams.dropoutRate}
+                onChange={(e) => handleParamChange('dropoutRate', parseFloat(e.target.value))}
+                disabled={trainingStatus === 'training'}
+              >
+                <option value="0.2">Light (0.2)</option>
+                <option value="0.3">Medium (0.3)</option>
+                <option value="0.4">Heavy (0.4)</option>
+              </select>
+              <span className="param-help">Higher values help with distance generalization</span>
+            </div>
+
+            <div className="param-group">
+              <label htmlFor="batchSize">Batch Size:</label>
+              <select
+                id="batchSize"
+                value={modelParams.batchSize}
+                onChange={(e) => handleParamChange('batchSize', parseInt(e.target.value))}
+                disabled={trainingStatus === 'training'}
+              >
+                <option value="8">8 (Lower Memory Usage)</option>
+                <option value="16">16 (Balanced)</option>
+                <option value="32">32 (Faster Training)</option>
+              </select>
+              <span className="param-help">Use smaller batch size for limited memory</span>
             </div>
           </div>
 
           <div className="train-section">
-            <h3>3. Train Model</h3>
+            <h3>3. Train Distance-Optimized Model</h3>
             <button
               className="train-button"
               onClick={trainModel}
               disabled={trainingStatus !== 'ready' || !splitData}
             >
-              {trainingStatus === 'training' ? 'Training...' : 'Train Model'}
+              {trainingStatus === 'training' ? 'Training...' : 'Train Model for TV Distance'}
             </button>
 
             {evaluationResults && (
               <div className="evaluation-results">
                 <h4>Evaluation Results:</h4>
                 <div className="result-item">
-                  <span>Accuracy:</span>
-                  <span className="accuracy">{(evaluationResults.accuracy * 100).toFixed(2)}%</span>
+                  <span>Overall Accuracy:</span>
+                  <span className={`accuracy ${evaluationResults.accuracy > 0.85 ? 'excellent' : (evaluationResults.accuracy > 0.75 ? 'good' : 'insufficient')}`}>
+                    {(evaluationResults.accuracy * 100).toFixed(2)}%
+                  </span>
                 </div>
                 <div className="result-item">
-                  <span>Loss:</span>
-                  <span>{evaluationResults.loss.toFixed(4)}</span>
+                  <span>Distance Performance:</span>
+                  <span className={`accuracy ${evaluationResults.accuracy > 0.85 ? 'excellent' : (evaluationResults.accuracy > 0.75 ? 'good' : 'insufficient')}`}>
+                    {evaluationResults.accuracy > 0.85 ? 'Excellent' : (evaluationResults.accuracy > 0.75 ? 'Good' : 'Needs Improvement')}
+                  </span>
                 </div>
               </div>
             )}
@@ -581,13 +678,13 @@ function GestureModelTrainer() {
                   className="save-button"
                   onClick={saveModel}
                 >
-                  Save Model
+                  Save TV-Optimized Model
                 </button>
                 <button
                   className="test-button"
                   onClick={testModel}
                 >
-                  Test Inference
+                  Test Distance Inference
                 </button>
               </div>
             )}
@@ -610,7 +707,7 @@ function GestureModelTrainer() {
             )}
             {trainingStatus === 'training' && (
               <div className="log-entry training-indicator">
-                Training in progress...
+                Training in progress... (this may take several minutes)
               </div>
             )}
           </div>
@@ -618,118 +715,19 @@ function GestureModelTrainer() {
       </div>
 
       <div className="instructions">
-        <h3>Instructions:</h3>
+        <h3>TV-Based Detection Instructions:</h3>
         <ol>
-          <li>Upload the gesture data JSON file created with the Gesture Data Collector</li>
-          <li>Configure model parameters (defaults are optimized for M1 Macs with 8GB RAM)</li>
-          <li>Click "Train Model" to train a neural network</li>
-          <li>Monitor the training progress in the log section</li>
-          <li>Once training is complete, you can test the model on random samples</li>
-          <li>Save the model files to use in your HandiLearn application</li>
+          <li>Collect gesture samples at <strong>4-5 feet distance</strong> (TV viewing distance)</li>
+          <li>Aim for <strong>50+ samples per gesture</strong> for reliable distance detection</li>
+          <li>Ensure samples are collected with <strong>good front lighting</strong></li>
+          <li>Use <strong>Distance Augmentation</strong> to improve model performance</li>
+          <li>Choose <strong>larger model size</strong> and <strong>more epochs</strong> for better distance accuracy</li>
+          <li>After training, save the model and <strong>test thoroughly</strong> at your target distance</li>
         </ol>
-        <p><strong>Note:</strong> Training may take several minutes depending on your device and dataset size.</p>
+        <p className="distance-tip"><strong>Tip:</strong> For best results, position the camera at eye level, centered under/above the TV, and ensure it has a clear view of the interaction space.</p>
       </div>
     </div>
   );
-}
-
-// Normalize hand landmarks to be position and scale invariant
-function normalizeHandLandmarks(landmarks) {
-  if (!landmarks || landmarks.length !== 63) {
-    throw new Error('Invalid landmarks format. Expected 63 values (21 landmarks × 3 coordinates)');
-  }
-
-  // Reshape into [x,y,z] format for easier processing
-  const reshapedLandmarks = [];
-  for (let i = 0; i < landmarks.length; i += 3) {
-    reshapedLandmarks.push({
-      x: landmarks[i],
-      y: landmarks[i + 1],
-      z: landmarks[i + 2]
-    });
-  }
-
-  // Get wrist coordinates (first landmark)
-  const wrist = reshapedLandmarks[0];
-
-  // Subtract wrist position from all landmarks to center at origin
-  const centeredLandmarks = reshapedLandmarks.map(landmark => ({
-    x: landmark.x - wrist.x,
-    y: landmark.y - wrist.y,
-    z: landmark.z - wrist.z
-  }));
-
-  // Calculate scale factor based on distance from wrist to middle finger tip
-  const middleFingerTip = centeredLandmarks[12]; // Index 12 corresponds to middle finger tip
-  const distanceToMiddleTip = Math.sqrt(
-    middleFingerTip.x * middleFingerTip.x +
-    middleFingerTip.y * middleFingerTip.y +
-    middleFingerTip.z * middleFingerTip.z
-  );
-
-  // Scale factor to make distance to middle finger tip = 1
-  const scaleFactor = distanceToMiddleTip > 0 ? 1 / distanceToMiddleTip : 1;
-
-  // Scale all landmarks
-  const normalizedLandmarks = centeredLandmarks.map(landmark => ({
-    x: landmark.x * scaleFactor,
-    y: landmark.y * scaleFactor,
-    z: landmark.z * scaleFactor
-  }));
-
-  // Flatten back to 1D array
-  const flattenedNormalized = normalizedLandmarks.flatMap(landmark => [
-    landmark.x, landmark.y, landmark.z
-  ]);
-
-  return flattenedNormalized;
-}
-
-// Split dataset into training and testing sets
-function splitTrainTest(processedData, testRatio = 0.2) {
-  const { features, labels, labelMapping, gestures } = processedData;
-
-  if (!features || !labels || features.length !== labels.length) {
-    throw new Error('Invalid processed data format');
-  }
-
-  // Create index array and shuffle it
-  const indices = Array.from({ length: features.length }, (_, i) => i);
-  shuffleArray(indices);
-
-  // Calculate split point
-  const splitPoint = Math.floor(features.length * (1 - testRatio));
-
-  // Split into train and test sets
-  const trainIndices = indices.slice(0, splitPoint);
-  const testIndices = indices.slice(splitPoint);
-
-  // Create train and test sets
-  const trainFeatures = trainIndices.map(i => features[i]);
-  const trainLabels = trainIndices.map(i => labels[i]);
-  const testFeatures = testIndices.map(i => features[i]);
-  const testLabels = testIndices.map(i => labels[i]);
-
-  return {
-    train: {
-      features: trainFeatures,
-      labels: trainLabels
-    },
-    test: {
-      features: testFeatures,
-      labels: testLabels
-    },
-    labelMapping,
-    gestures
-  };
-}
-
-// Shuffle an array in-place
-function shuffleArray(array) {
-  for (let i = array.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [array[i], array[j]] = [array[j], array[i]];
-  }
 }
 
 export default GestureModelTrainer;

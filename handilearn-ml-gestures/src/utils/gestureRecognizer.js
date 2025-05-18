@@ -1,5 +1,6 @@
 /**
  * GestureRecognizer - ML-based hand gesture recognition using TensorFlow.js
+ * Optimized for TV-based detection at 4-5 feet distance
  */
 import * as tf from '@tensorflow/tfjs';
 
@@ -8,16 +9,23 @@ class GestureRecognizer {
     this.model = null;
     this.metadata = null;
     this.isLoaded = false;
-    this.confidenceThreshold = 0.65;
+
+    // Distance-optimized recognition parameters
+    this.confidenceThreshold = 0.5;  // Lower threshold for distance detection
     this.smoothingWindow = [];
-    this.windowSize = 5;
+    this.windowSize = 7;  // Larger window for more temporal smoothing
     this.lastGesture = null;
     this.gestureHoldTime = 0;
-    this.minHoldFrames = 3;
+    this.minHoldFrames = 5;  // Require more consistent frames at distance
+
+    // Advanced filtering options
+    this.useDoubleSmoothing = true;  // Apply secondary smoothing for distances
+    this.gestureHistory = {};  // Track multiple gestures over time
+    this.stabilityBonus = 0.1;  // Bonus for consistent gestures
   }
 
   /**
-   * Normalize hand landmarks for model input
+   * Normalize hand landmarks for model input with distance optimization
    * @param {Array} landmarks - Array of hand landmarks (21 points with x,y,z coordinates)
    * @returns {Array} - Normalized flattened landmarks
    */
@@ -58,6 +66,19 @@ class GestureRecognizer {
       normalizedLandmarks[i] = centeredLandmarks[i] * scale;
     }
 
+    // Additional normalization for distance-specific noise
+    // Apply subtle smoothing to reduce jitter in normalized space
+    if (this.useDoubleSmoothing && this.lastNormalizedLandmarks) {
+      const smoothingFactor = 0.15; // 15% from previous frame
+      for (let i = 0; i < normalizedLandmarks.length; i++) {
+        normalizedLandmarks[i] = (normalizedLandmarks[i] * (1 - smoothingFactor)) +
+          (this.lastNormalizedLandmarks[i] * smoothingFactor);
+      }
+    }
+
+    // Save for next frame smoothing
+    this.lastNormalizedLandmarks = [...normalizedLandmarks];
+
     return normalizedLandmarks;
   }
 
@@ -95,11 +116,13 @@ class GestureRecognizer {
   }
 
   /**
-   * Set model parameters
+   * Set model parameters - optimized for TV distance
    * @param {Object} params - Parameters object
    * @param {number} params.confidenceThreshold - Minimum confidence for detection (0-1)
    * @param {number} params.windowSize - Number of frames to smooth over
    * @param {number} params.minHoldFrames - Minimum frames to hold a gesture
+   * @param {boolean} params.useDoubleSmoothing - Apply secondary smoothing
+   * @param {number} params.stabilityBonus - Bonus for consistent gestures
    */
   configure(params = {}) {
     if (params.confidenceThreshold !== undefined) {
@@ -114,10 +137,18 @@ class GestureRecognizer {
     if (params.minHoldFrames !== undefined) {
       this.minHoldFrames = Math.max(1, params.minHoldFrames);
     }
+
+    if (params.useDoubleSmoothing !== undefined) {
+      this.useDoubleSmoothing = params.useDoubleSmoothing;
+    }
+
+    if (params.stabilityBonus !== undefined) {
+      this.stabilityBonus = Math.max(0, Math.min(0.5, params.stabilityBonus));
+    }
   }
 
   /**
-   * Recognize gesture from hand landmarks
+   * Recognize gesture from hand landmarks with distance optimization
    * @param {Array} landmarks - MediaPipe hand landmarks
    * @returns {Object|null} - Recognized gesture or null
    */
@@ -159,8 +190,8 @@ class GestureRecognizer {
         allScores: Object.fromEntries(gestures.map((g, i) => [g, scores[i]]))
       };
 
-      // Apply temporal smoothing
-      const smoothedPrediction = this.smoothPrediction(rawPrediction);
+      // Apply enhanced temporal smoothing for distance
+      const smoothedPrediction = this.enhancedSmoothPrediction(rawPrediction);
 
       // Clean up tensors
       inputTensor.dispose();
@@ -175,11 +206,11 @@ class GestureRecognizer {
   }
 
   /**
-   * Apply temporal smoothing to predictions
+   * Apply enhanced temporal smoothing to predictions for distance-based detection
    * @param {Object} rawPrediction - Raw prediction from model
    * @returns {Object|null} - Smoothed prediction
    */
-  smoothPrediction(rawPrediction) {
+  enhancedSmoothPrediction(rawPrediction) {
     // Add current prediction to window
     this.smoothingWindow.push(rawPrediction);
 
@@ -197,24 +228,67 @@ class GestureRecognizer {
       confidenceSum[pred.gesture] = (confidenceSum[pred.gesture] || 0) + pred.confidence;
     });
 
+    // Update gesture history
+    Object.keys(gestureCounts).forEach(gesture => {
+      if (!this.gestureHistory[gesture]) {
+        this.gestureHistory[gesture] = {
+          consecutiveFrames: 0,
+          lastSeen: 0
+        };
+      }
+    });
+
     // Find dominant gesture
     let maxCount = 0;
     let dominantGesture = null;
     let avgConfidence = 0;
 
     Object.entries(gestureCounts).forEach(([gesture, count]) => {
-      if (count > maxCount) {
+      // Calculate base confidence
+      const baseConfidence = confidenceSum[gesture] / count;
+
+      // Add stability bonus for consistent gestures
+      let stabilityScore = 0;
+      if (this.lastGesture?.gesture === gesture) {
+        stabilityScore = this.stabilityBonus;
+      }
+
+      // Compute adjusted confidence
+      const adjustedConfidence = baseConfidence + stabilityScore;
+
+      // Update if this is the new best
+      if (count > maxCount || (count === maxCount && adjustedConfidence > avgConfidence)) {
         maxCount = count;
         dominantGesture = gesture;
-        avgConfidence = confidenceSum[gesture] / count;
+        avgConfidence = adjustedConfidence;
       }
     });
 
-    // Check if it's a new or continuing gesture
-    if (dominantGesture === this.lastGesture?.gesture) {
-      this.gestureHoldTime++;
-    } else {
+    // Update gesture history for all tracked gestures
+    Object.keys(this.gestureHistory).forEach(gesture => {
+      const history = this.gestureHistory[gesture];
+
+      if (gesture === dominantGesture) {
+        history.consecutiveFrames++;
+        history.lastSeen = 0;
+      } else {
+        history.consecutiveFrames = 0;
+        history.lastSeen++;
+      }
+
+      // Clean up history (remove gestures not seen in 60 frames)
+      if (history.lastSeen > 60) {
+        delete this.gestureHistory[gesture];
+      }
+    });
+
+    // Check if it's a continuing gesture
+    const isNewGesture = this.lastGesture?.gesture !== dominantGesture;
+
+    if (isNewGesture) {
       this.gestureHoldTime = 1;
+    } else {
+      this.gestureHoldTime++;
     }
 
     // Only return if confidence is above threshold and held for minimum frames
@@ -283,6 +357,18 @@ class GestureRecognizer {
       console.error('Error getting raw prediction:', error);
       return null;
     }
+  }
+
+  /**
+   * Reset the recognizer state
+   * Useful when changing scenes or users
+   */
+  reset() {
+    this.smoothingWindow = [];
+    this.lastGesture = null;
+    this.gestureHoldTime = 0;
+    this.gestureHistory = {};
+    this.lastNormalizedLandmarks = null;
   }
 }
 

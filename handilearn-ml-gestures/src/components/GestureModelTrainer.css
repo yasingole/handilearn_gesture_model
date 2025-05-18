@@ -1,10 +1,22 @@
-/* Styles for the Gesture Model Trainer component */
+/* Styles for the updated TV-based Gesture Model Trainer component */
 
 .gesture-model-trainer {
   display: flex;
   flex-direction: column;
   align-items: center;
   width: 100%;
+}
+
+.gesture-model-trainer h2 {
+  margin-bottom: 0.25rem;
+  color: var(--primary-color);
+}
+
+.trainer-description {
+  margin-bottom: 1.5rem;
+  color: var(--secondary-color);
+  font-weight: bold;
+  text-align: center;
 }
 
 .trainer-container {
@@ -36,7 +48,15 @@
 .log-section h3 {
   margin-top: 0;
   color: var(--primary-color);
+  margin-bottom: 0.5rem;
+}
+
+.section-tip {
+  font-size: 0.9rem;
+  color: var(--secondary-color);
+  margin-top: 0;
   margin-bottom: 1rem;
+  font-style: italic;
 }
 
 .upload-button,
@@ -60,6 +80,8 @@
 .train-button {
   background-color: var(--accent-color);
   color: white;
+  font-weight: bold;
+  padding: 0.6rem 1.2rem;
 }
 
 .save-button {
@@ -101,8 +123,47 @@
 
 .data-summary h4 {
   margin-top: 0;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.75rem;
   color: var(--primary-color);
+}
+
+.dataset-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.stat-item {
+  background-color: #e9ecef;
+  padding: 0.5rem;
+  border-radius: 5px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 100px;
+}
+
+.stat-label {
+  font-size: 0.8rem;
+  color: #666;
+}
+
+.stat-value {
+  font-weight: bold;
+  font-size: 1.1rem;
+}
+
+.readiness-excellent {
+  color: #27ae60;
+}
+
+.readiness-adequate {
+  color: #f39c12;
+}
+
+.readiness-insufficient {
+  color: #e74c3c;
 }
 
 .gesture-list {
@@ -119,6 +180,19 @@
   padding: 0.25rem 0.5rem;
   background-color: #e9ecef;
   border-radius: 3px;
+  border-left: 4px solid #ccc;
+}
+
+.gesture-item.readiness-excellent {
+  border-left-color: #27ae60;
+}
+
+.gesture-item.readiness-adequate {
+  border-left-color: #f39c12;
+}
+
+.gesture-item.readiness-insufficient {
+  border-left-color: #e74c3c;
 }
 
 .gesture-item .label {
@@ -133,6 +207,26 @@
   font-size: 0.9rem;
   min-width: 30px;
   text-align: center;
+}
+
+.distance-augmentation {
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background-color: #e9ecef;
+  border-radius: 5px;
+  border-left: 4px solid var(--accent-color);
+}
+
+.distance-augmentation label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: bold;
+}
+
+.distance-augmentation input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
 }
 
 .param-group {
@@ -174,19 +268,36 @@
 
 .evaluation-results h4 {
   margin-top: 0;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.75rem;
   color: var(--primary-color);
 }
 
 .result-item {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.5rem;
+  align-items: center;
 }
 
 .accuracy {
   font-weight: bold;
-  color: #27ae60;
+  padding: 0.2rem 0.5rem;
+  border-radius: 3px;
+}
+
+.accuracy.excellent {
+  background-color: #27ae60;
+  color: white;
+}
+
+.accuracy.good {
+  background-color: #f39c12;
+  color: white;
+}
+
+.accuracy.insufficient {
+  background-color: #e74c3c;
+  color: white;
 }
 
 .model-actions {
@@ -201,7 +312,7 @@
 }
 
 .log-container {
-  max-height: 500px;
+  max-height: 550px;
   overflow-y: auto;
   background-color: #222;
   color: #f5f5f5;
@@ -244,14 +355,28 @@
 .instructions h3 {
   margin-top: 0;
   color: var(--primary-color);
+  margin-bottom: 0.75rem;
 }
 
 .instructions ol {
   padding-left: 1.5rem;
+  margin-bottom: 1rem;
 }
 
 .instructions li {
   margin-bottom: 0.5rem;
+}
+
+.instructions strong {
+  color: var(--secondary-color);
+}
+
+.distance-tip {
+  padding: 0.75rem;
+  background-color: #e9ecef;
+  border-radius: 5px;
+  border-left: 4px solid var(--accent-color);
+  margin-top: 1rem;
 }
 
 /* Responsive adjustments */
@@ -272,5 +397,16 @@
 @media (max-width: 600px) {
   .gesture-list {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .dataset-stats {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .stat-item {
+    flex-direction: row;
+    justify-content: space-between;
+    min-width: auto;
   }
 }
