@@ -1,6 +1,8 @@
+// src/App.jsx
 import React, { useState } from 'react';
 import GestureDataCollector from './components/GestureDataCollector';
 import GestureModelTrainer from './components/GestureModelTrainer';
+import ModelUploader from './components/ModelUploader'; // Import the new component
 import './App.css';
 
 function App() {
@@ -56,14 +58,22 @@ function App() {
           >
             Model Training
           </button>
+          <button
+            className={activeTab === 'test' ? 'active' : ''}
+            onClick={() => setActiveTab('test')}
+          >
+            Test Existing Model
+          </button>
         </div>
       </header>
 
       <main>
         {activeTab === 'collect' ? (
           <GestureDataCollector gestureLabels={gestureLabels} />
-        ) : (
+        ) : activeTab === 'train' ? (
           <GestureModelTrainer />
+        ) : (
+          <ModelUploader />
         )}
       </main>
 
